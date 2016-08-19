@@ -35,6 +35,15 @@ class response:
 		for l in self.lines:
 			print(l.decode('ascii'), end = '')
 		print("")
+		
+from enum import Enum
+# Type of data transfer on the data channel
+class transfer_type(Enum):
+	list = 1
+	file = 2
+	
+class transfer(object):
+	pass
 
 class ftp_session:
 	def __init__(self, server, port):
@@ -81,18 +90,34 @@ class ftp_session:
 		print(ip_port_array)
 		if (len(ip_port_array) != 6):
 			raise pasv_resp_error
-		transfer = 1
-		transfer.ip = ip = '.'.join(ip_port_array[0:4])
-		transfer.port = (int(ip_port_array[4]) << 8) + int(ip_port_array[5])
-		print("%s:%d\n" % (ip, port))
-		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		data_socket.connect((ip, port))
-
+		trans = transfer()
+		trans.server_address = '.'.join(ip_port_array[0:4])
+		trans.server_port = (int(ip_port_array[4]) << 8) + int(ip_port_array[5])
+		print("%s:%d\n" % (trans.server_address, trans.server_port))
+		
 
 	def get(self, filename):
 		self.send_command("PASV\r\n")
 		resp = self.get_resp()
 		self.parse_pasv_resp(resp)
+		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		data_socket.connect((self.d.ip, self.d.port))
+		self.send_command("RETR %s\r\n" % filename)
+		print(data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii'))
+		
+	def ls(self, filename):
+		self.send_command("PASV\r\n")
+		resp = self.get_resp()
+		self.parse_pasv_resp(resp)
+		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		data_socket.connect((self.d.ip, self.d.port))
+		self.send_command("LIST %s\r\n" % filename)
+		while True:
+			ls_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
+			if (ls_data == ''):
+				break
+			print(ls_data, end='')
+		print()
 
 	def login(self, username, password = None):
 		self.send_command("USER %s\r\n" % username)
@@ -117,7 +142,7 @@ if (__name__ == '__main__'):
 	ftp.wait_welcome_msg()
 	#try:
 	ftp.login("anonymous", "")
-	ftp.get("fdfd")
+	ftp.ls("/Temp/fortidev4-fsoc1/bin/openssl")
 	#except:
 	#print("login failed.")
 
