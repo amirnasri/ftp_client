@@ -1,5 +1,5 @@
 import socket
-
+import os
 
 class response:
 	def __init__(self):
@@ -58,7 +58,15 @@ class ftp_session:
 		self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.client.connect((server, port))
 		self.buff = bytearray()
+		self.load_text_file_extensions()
 		
+	def load_text_file_extensions(self):
+		self.text_file_extensions = set()
+		print(os.getcwd())
+		f = open('text_file_extensions')
+		for line in f:
+			self.text_file_extensions.add(line.strip())
+			
 	def wait_welcome_msg(self):
 		self.get_resp()
 
@@ -91,6 +99,7 @@ class ftp_session:
 	"""
 	
 	def send_command(self, command):
+		print(command.strip())
 		self.client.send(bytes(command, 'ascii'))
 
 	def parse_pasv_resp(self, resp):
@@ -106,7 +115,6 @@ class ftp_session:
 			raise pasv_resp_error
 		resp_line = resp_line[:rpos]
 		ip_port_array = resp_line.split(',')
-		print(ip_port_array)
 		if (len(ip_port_array) != 6):
 			raise pasv_resp_error
 		trans = transfer()
@@ -116,14 +124,44 @@ class ftp_session:
 		print("%s:%d\n" % (trans.server_address, trans.server_port))
 		
 
-	def get(self, filename):
+	def get(self, path):
+		# Send PASV command to prepare for data transfer
 		self.send_command("PASV\r\n")
 		resp = self.get_resp()
 		self.parse_pasv_resp(resp)
+
+		slash = path.rfind('/')
+		if (slash != -1):
+			filename = path[slash + 1:]
+		else:
+			filename = path
+		print("Requesting file %s from the ftp server..." % filename)
+		file_ext = filename[filename.rfind('.'):]
+
+		# Send TYPE depending on the type of the file 
+		if (file_ext in self.text_file_extensions):
+			self.trans.type = 'A'
+			self.send_command("TYPE A\r\n")
+		else:
+			self.trans.type = 'I'
+			self.send_command("TYPE I\r\n")
+		resp = self.get_resp()
+		
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		data_socket.connect((self.d.ip, self.d.port))
-		self.send_command("RETR %s\r\n" % filename)
-		print(data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii'))
+		data_socket.connect((self.trans.server_address, self.trans.server_port))
+		self.send_command("RETR %s\r\n" % path)
+		resp = self.get_resp()
+		f = open(filename, "wb")
+		while True:
+			file_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE)
+				
+			if (file_data == b''):
+				break
+			if (self.trans.type == 'A'):
+				file_data = bytes(file_data.decode('ascii').replace('\r\n', '\n'), 'ascii')
+			f.write(file_data)
+		f.close()
+		resp = self.get_resp()
 		
 	def ls(self, filename):
 		self.send_command("PASV\r\n")
@@ -158,11 +196,11 @@ class ftp_session:
 		self.client.close()
 
 if (__name__ == '__main__'):
-	ftp = ftp_session("localhost", 21)
+	ftp = ftp_session("172.18.2.169", 21)
 	ftp.wait_welcome_msg()
 	#try:
-	ftp.login("anonymous", "")
-	ftp.ls("/Temp/fortidev4-fsoc1/bin/openssl")
+	ftp.login("anonymous", "p")
+	ftp.get("upload/anasri/a.txt")
 	#except:
 	#print("login failed.")
 
