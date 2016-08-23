@@ -7,28 +7,35 @@ class response:
 		self.lines = []
 		self.multiline = False
 		self.resp_code = 0
-
+		
+	def proc_newline(self, newline):
+		if not self.multiline:
+			# Only the first line of response comes here (for both single-line and multiline responses).
+			resp_code = int(newline[:3])
+			if (resp_code > 100 and resp_code < 600 and \
+					(chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
+				self.resp_code = resp_code
+			else:
+				raise resp_parse_error
+			
+			if (chr(newline[3]) == '-'):
+				self.multiline = True
+			else:
+				self.is_complete = True
+		else:
+			if (int(newline[:3]) == self.resp_code and chr(newline[3]) == ' '):
+				self.is_complete = True
+		
 	def process_string(self, s):
 		while True:
+			# TODO: change '\r\n' to '\r*\n'
 			rn_pos = s.find(b'\r\n')
 			if (rn_pos == -1):
 				break
-			self.lines.append(s[:rn_pos + 2])
+			newline = s[:rn_pos + 2]
 			s = s[rn_pos + 2:]
-
-		if (self.resp_code == 0 and len(self.lines) > 0):
-			resp_code = int(self.lines[0][:3])
-			if (resp_code > 100 and resp_code < 600):
-				self.resp_code = resp_code
-			if (chr(self.lines[0][3]) == '-'):
-				self.multiline = True
-
-		if (self.multiline):
-			if (int(self.lines[-1][:3]) == self.resp_code and chr(self.lines[-1][3]) == ' '):
-				self.is_complete = True
-		else:
-			if (len(self.lines) != 0):
-				self.is_complete = True
+			self.proc_newline(newline)
+			self.lines.append(newline)
 		return s
 
 	def print_resp(self):
@@ -36,9 +43,8 @@ class response:
 			print(l.decode('ascii'), end = '')
 		print("")
 		
-from enum import Enum
 # Type of data transfer on the data channel
-class transfer_type(Enum):
+class transfer_type:
 	list = 1
 	file = 2
 	
@@ -52,25 +58,38 @@ class ftp_session:
 		self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.client.connect((server, port))
 		self.buff = bytearray()
-
+		
 	def wait_welcome_msg(self):
-		self.resp = self.get_resp()
+		self.get_resp()
 
-	READ_BLOCK_SIZE = 2048
+	READ_BLOCK_SIZE = 10
 	def get_resp(self):
 		resp = response()
 		while True:
 			s = self.client.recv(ftp_session.READ_BLOCK_SIZE)
 			if (s == ''):
-				break
+				return None
 			self.buff = resp.process_string(self.buff + s)
 			if (resp.is_complete):
-				break
-
-		resp.print_resp()
-		return resp
+				resp.print_resp()
+				return resp
 		#self.client.close()
-
+	"""		
+	def get_resp(self):
+		if (len(self.resp_queue) == 0):
+			while True:
+				resp = self.get_resp_()
+				''' If response is not complete we stop processing the responses untile the 
+				next time get_resp is called. '''
+				if resp is None:
+					break
+				''' Insert the new response at the begining of the (empty) queue. '''
+				self.resp_queue.insert(0, resp)
+				
+		''' Pop the last response in the queue and return it. '''
+		return self.resp_queue.pop()
+	"""
+	
 	def send_command(self, command):
 		self.client.send(bytes(command, 'ascii'))
 
@@ -93,6 +112,7 @@ class ftp_session:
 		trans = transfer()
 		trans.server_address = '.'.join(ip_port_array[0:4])
 		trans.server_port = (int(ip_port_array[4]) << 8) + int(ip_port_array[5])
+		self.trans = trans
 		print("%s:%d\n" % (trans.server_address, trans.server_port))
 		
 
@@ -110,7 +130,7 @@ class ftp_session:
 		resp = self.get_resp()
 		self.parse_pasv_resp(resp)
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		data_socket.connect((self.d.ip, self.d.port))
+		data_socket.connect((self.trans.server_address, self.trans.server_port))
 		self.send_command("LIST %s\r\n" % filename)
 		while True:
 			ls_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
@@ -121,15 +141,15 @@ class ftp_session:
 
 	def login(self, username, password = None):
 		self.send_command("USER %s\r\n" % username)
-		self.resp = self.get_resp()
-		if (self.resp.resp_code == 331):
+		resp = self.get_resp()
+		if (resp.resp_code == 331):
 			if not (password):
 				raise login_error
 			self.send_command("PASS %s\r\n" % password)
-			self.get_resp()
-			if (self.resp.resp_code != 230):
+			resp = self.get_resp()
+			if (resp.resp_code != 230):
 				raise login_error
-		elif (self.resp.resp_code == 230):
+		elif (resp.resp_code == 230):
 			return
 		else:
 			raise login_error
