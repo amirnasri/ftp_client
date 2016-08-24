@@ -1,56 +1,6 @@
 import socket
 import os
 
-class response:
-	def __init__(self):
-		self.is_complete = False
-		self.lines = []
-		self.multiline = False
-		self.resp_code = 0
-		
-	def proc_newline(self, newline):
-		if not self.multiline:
-			# Only the first line of response comes here (for both single-line and multiline responses).
-			resp_code = int(newline[:3])
-			if (resp_code > 100 and resp_code < 600 and \
-					(chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
-				self.resp_code = resp_code
-			else:
-				raise resp_parse_error
-			
-			if (chr(newline[3]) == '-'):
-				self.multiline = True
-			else:
-				self.is_complete = True
-		else:
-			if (int(newline[:3]) == self.resp_code and chr(newline[3]) == ' '):
-				self.is_complete = True
-		
-	def process_string(self, s):
-		while True:
-			# TODO: change '\r\n' to '\r*\n'
-			rn_pos = s.find(b'\r\n')
-			if (rn_pos == -1):
-				break
-			newline = s[:rn_pos + 2]
-			s = s[rn_pos + 2:]
-			self.proc_newline(newline)
-			self.lines.append(newline)
-		return s
-
-	def print_resp(self):
-		for l in self.lines:
-			print(l.decode('ascii'), end = '')
-		print("")
-		
-# Type of data transfer on the data channel
-class transfer_type:
-	list = 1
-	file = 2
-	
-class transfer(object):
-	pass
-
 class ftp_session:
 	def __init__(self, server, port):
 		self.server = server
@@ -178,6 +128,7 @@ class ftp_session:
 		print()
 
 	def login(self, username, password = None):
+		self.wait_welcome_msg()
 		self.send_command("USER %s\r\n" % username)
 		resp = self.get_resp()
 		if (resp.resp_code == 331):
@@ -195,9 +146,58 @@ class ftp_session:
 	def session_close(self):
 		self.client.close()
 
+class response:
+	def __init__(self):
+		self.is_complete = False
+		self.lines = []
+		self.multiline = False
+		self.resp_code = 0
+		
+	def proc_newline(self, newline):
+		if not self.multiline:
+			# Only the first line of response comes here (for both single-line and multiline responses).
+			resp_code = int(newline[:3])
+			if (resp_code > 100 and resp_code < 600 and \
+					(chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
+				self.resp_code = resp_code
+			else:
+				raise resp_parse_error
+			
+			if (chr(newline[3]) == '-'):
+				self.multiline = True
+			else:
+				self.is_complete = True
+		else:
+			if (int(newline[:3]) == self.resp_code and chr(newline[3]) == ' '):
+				self.is_complete = True
+		
+	def process_string(self, s):
+		while True:
+			# TODO: change '\r\n' to '\r*\n'
+			rn_pos = s.find(b'\r\n')
+			if (rn_pos == -1):
+				break
+			newline = s[:rn_pos + 2]
+			s = s[rn_pos + 2:]
+			self.proc_newline(newline)
+			self.lines.append(newline)
+		return s
+
+	def print_resp(self):
+		for l in self.lines:
+			print(l.decode('ascii'), end = '')
+		print("")
+		
+# Type of data transfer on the data channel
+class transfer_type:
+	list = 1
+	file = 2
+	
+class transfer(object):
+	pass
+
 if (__name__ == '__main__'):
 	ftp = ftp_session("172.18.2.169", 21)
-	ftp.wait_welcome_msg()
 	#try:
 	ftp.login("anonymous", "p")
 	ftp.get("upload/anasri/a.txt")
