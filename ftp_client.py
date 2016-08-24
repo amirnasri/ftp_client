@@ -1,5 +1,6 @@
 import socket
 import os
+import time
 
 class ftp_session:
 	def __init__(self, server, port):
@@ -73,7 +74,10 @@ class ftp_session:
 		self.trans = trans
 		print("%s:%d\n" % (trans.server_address, trans.server_port))
 		
-
+	@staticmethod
+	def calculate_data_rate(filesize, seconds):
+		return filesize/seconds
+	
 	def get(self, path):
 		# Send PASV command to prepare for data transfer
 		self.send_command("PASV\r\n")
@@ -102,14 +106,18 @@ class ftp_session:
 		self.send_command("RETR %s\r\n" % path)
 		resp = self.get_resp()
 		f = open(filename, "wb")
+		filesize = 0
+		curr_time = time.time()
 		while True:
 			file_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE)
-				
 			if (file_data == b''):
 				break
 			if (self.trans.type == 'A'):
 				file_data = bytes(file_data.decode('ascii').replace('\r\n', '\n'), 'ascii')
 			f.write(file_data)
+			filesize += len(file_data)
+		elapsed_time = time.time()- curr_time
+		print("%d bytes received in %f seconds (%.2f b/s)." %(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
 		f.close()
 		resp = self.get_resp()
 		
@@ -120,12 +128,14 @@ class ftp_session:
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((self.trans.server_address, self.trans.server_port))
 		self.send_command("LIST %s\r\n" % filename)
+		resp = self.get_resp()
 		while True:
 			ls_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
 			if (ls_data == ''):
 				break
 			print(ls_data, end='')
 		print()
+		resp = self.get_resp()
 
 	def login(self, username, password = None):
 		self.wait_welcome_msg()
@@ -200,6 +210,7 @@ if (__name__ == '__main__'):
 	ftp = ftp_session("172.18.2.169", 21)
 	#try:
 	ftp.login("anonymous", "p")
+	ftp.ls("upload")
 	ftp.get("upload/anasri/a.txt")
 	#except:
 	#print("login failed.")
