@@ -3,6 +3,7 @@ import os
 import time
 
 class ftp_session:
+	cmd_table = {}
 	def __init__(self, server, port = 21):
 		self.server = server
 		self.port = port
@@ -10,6 +11,9 @@ class ftp_session:
 		self.client.connect((server, port))
 		self.buff = bytearray()
 		self.load_text_file_extensions()
+		if (len(ftp_session.cmd_table) == 0):
+			ftp_session.cmd_table['get'] = self.get
+			ftp_session.cmd_table['ls'] = self.ls
 		
 	def load_text_file_extensions(self):
 		self.text_file_extensions = set()
@@ -49,7 +53,7 @@ class ftp_session:
 		return self.resp_queue.pop()
 	"""
 	
-	def send_command(self, command):
+	def send_raw_command(self, command):
 		print(command.strip())
 		self.client.send(bytes(command, 'ascii'))
 
@@ -78,9 +82,9 @@ class ftp_session:
 	def calculate_data_rate(filesize, seconds):
 		return filesize/seconds
 	
-	def get(self, path):
+	def get(self, path, verbose = 'True'):
 		# Send PASV command to prepare for data transfer
-		self.send_command("PASV\r\n")
+		self.send_raw_command("PASV\r\n")
 		resp = self.get_resp()
 		self.parse_pasv_resp(resp)
 
@@ -89,21 +93,22 @@ class ftp_session:
 			filename = path[slash + 1:]
 		else:
 			filename = path
-		print("Requesting file %s from the ftp server..." % filename)
+		if (verbose):
+			print("Requesting file %s from the ftp server..." % filename)
 		file_ext = filename[filename.rfind('.'):]
 
 		# Send TYPE depending on the type of the file 
 		if (file_ext in self.text_file_extensions):
 			self.trans.type = 'A'
-			self.send_command("TYPE A\r\n")
+			self.send_raw_command("TYPE A\r\n")
 		else:
 			self.trans.type = 'I'
-			self.send_command("TYPE I\r\n")
+			self.send_raw_command("TYPE I\r\n")
 		resp = self.get_resp()
 		
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((self.trans.server_address, self.trans.server_port))
-		self.send_command("RETR %s\r\n" % path)
+		self.send_raw_command("RETR %s\r\n" % path)
 		resp = self.get_resp()
 		f = open(filename, "wb")
 		filesize = 0
@@ -117,17 +122,19 @@ class ftp_session:
 			f.write(file_data)
 			filesize += len(file_data)
 		elapsed_time = time.time()- curr_time
-		print("%d bytes received in %f seconds (%.2f b/s)." %(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
-		f.close()
 		resp = self.get_resp()
+		f.close()
+		if (verbose):
+			print("%d bytes received in %f seconds (%.2f b/s)."  
+				%(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
 		
-	def ls(self, filename):
-		self.send_command("PASV\r\n")
+	def ls(self, filename=''):
+		self.send_raw_command("PASV\r\n")
 		resp = self.get_resp()
 		self.parse_pasv_resp(resp)
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((self.trans.server_address, self.trans.server_port))
-		self.send_command("LIST %s\r\n" % filename)
+		self.send_raw_command("LIST %s\r\n" % filename)
 		resp = self.get_resp()
 		while True:
 			ls_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
@@ -136,15 +143,28 @@ class ftp_session:
 			print(ls_data, end='')
 		print()
 		resp = self.get_resp()
+		
+	def get_cwd(self):
+		self.send_raw_command("PWD\r\n")
+		resp = self.get_resp()
+		
+	def cd(self, path=''):
+		if (not path):
+			self.send_raw_command("PWD\r\n")
+		else:
+			self.send_raw_command("CWD %s\r\n" % path)
+		resp = self.get_resp()
+		
+		
 
 	def login(self, username, password = None):
 		self.wait_welcome_msg()
-		self.send_command("USER %s\r\n" % username)
+		self.send_raw_command("USER %s\r\n" % username)
 		resp = self.get_resp()
 		if (resp.resp_code == 331):
 			if not (password):
 				raise login_error
-			self.send_command("PASS %s\r\n" % password)
+			self.send_raw_command("PASS %s\r\n" % password)
 			resp = self.get_resp()
 			if (resp.resp_code != 230):
 				raise login_error
@@ -153,6 +173,17 @@ class ftp_session:
 		else:
 			raise login_error
 
+	def run_command(self, cmd_line):
+		''' run a single ftp command received from the ftp_cli module.
+		'''
+		cmd_line = cmd_line.split()
+		cmd = cmd_line[0]
+		cmd_args = cmd_line[1:]
+		if (cmd in self.cmd_table):
+			ftp_session.cmd_table[cmd](*cmd_args)
+		else:
+			raise cmd_not_implemented_error
+		
 	def session_close(self):
 		self.client.close()
 
