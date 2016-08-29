@@ -43,7 +43,7 @@ class ftp_cli:
         self.proc_cli()
     
     def print_prompt(self):
-        print('%s@%s: %s> ' % (self.username, self.server, self.ftp_get_cwd()), end = '')
+        print('%s@%s: %s> ' % (self.username, self.server, self.ftp.get_cwd()), end = '')
     def proc_cli(self):
         ''' Process user input and translate them to appropriate ftp commands.
         '''
