@@ -51,10 +51,23 @@ class response:
 
 
 class ftp_raw_resp_handler:
-    
     READ_BLOCK_SIZE = 10
+    resp_handler_table = {}
+    
+    class ftp_res_type:
+        interm = 1
+        successful = 2
+        more_needed = 3
+        fail = 4
+        error = 5
+    
     @staticmethod
-    def get_resp(client_socket):
+    def init():
+        if not ftp_raw_resp_handler.resp_handler_table:
+                ftp_raw_resp_handler.resp_handler_table['PASV'] = ftp_raw_resp_handler.handle_pasv 
+    
+    @staticmethod
+    def get_resp_(client_socket):
         resp = response()
         buff = bytearray()
         while True:
@@ -81,7 +94,11 @@ class ftp_raw_resp_handler:
         ''' Pop the last response in the queue and return it. '''
         return self.resp_queue.pop()
     """
-    
+    @staticmethod
+    def get_resp(client_socket, ftp_cmd):
+        resp = ftp_raw_resp_handler.get_resp_(client_socket)
+        return ftp_raw_resp_handler.resp_handler(ftp_cmd, resp)
+        
     @staticmethod
     def handle_pasv(resp):
         if (len(resp.lines) != 1):
@@ -107,8 +124,12 @@ class ftp_raw_resp_handler:
     @staticmethod
     def handle_pwd(resp):
         first_line = resp.lines[0]
-        last_sp = first_line.rfind(b' ')
-        if (last_sp == -1):
+        quote = first_line.find(b'"')
+        if (quote == -1):
             raise pwd_resp_error
-        resp.cwd = first_line[last_sp+1:]
+        first_line = first_line[quote + 1:]
+        quote = first_line.find(b'"')
+        if (quote == -1):
+            raise pwd_resp_error
+        resp.cwd = first_line[:quote].decode('ascii')
         
