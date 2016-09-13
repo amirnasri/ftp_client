@@ -12,7 +12,6 @@ class transfer_type:
 
 class ftp_session:
 	READ_BLOCK_SIZE = 10
-	cmd_table = {}
 	def __init__(self, server, port = 21):
 		self.server = server
 		self.port = port
@@ -21,11 +20,7 @@ class ftp_session:
 		self.load_text_file_extensions()
 		self.cwd = ''
 		self.cmd = None
-		if not ftp_session.cmd_table:
-			ftp_session.cmd_table['get'] = self.get
-			ftp_session.cmd_table['ls'] = self.ls
-			ftp_session.cmd_table['cd'] = self.cd
-		
+
 	def send_raw_command(self, command):
 		print(command.strip())
 		self.client.send(bytes(command, 'ascii'))
@@ -166,8 +161,8 @@ class ftp_session:
 		cmd_line = cmd_line.split()
 		cmd = cmd_line[0]
 		cmd_args = cmd_line[1:]
-		if (cmd in self.cmd_table):
-			ftp_session.cmd_table[cmd](*cmd_args)
+		if hasattr(ftp_session, cmd):
+			getattr(ftp_session, cmd)(self, *cmd_args)
 		else:
 			raise cmd_not_implemented_error
 		
