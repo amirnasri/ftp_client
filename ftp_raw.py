@@ -1,6 +1,10 @@
 '''
 Handle responses from the server to ftp raw commands.
 '''
+
+from enum import Enum
+
+class connection_closed_error(Exception): pass
 class transfer(object):
     pass
 
@@ -15,7 +19,7 @@ class response:
         if not self.multiline:
             # Only the first line of response comes here (for both single-line and multiline responses).
             resp_code = int(newline[:3])
-            if (resp_code > 100 and resp_code < 600 and \
+            if (resp_code > 100 and resp_code < 600 and
                     (chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
                 self.resp_code = resp_code
             else:
@@ -54,7 +58,7 @@ class ftp_raw_resp_handler:
     READ_BLOCK_SIZE = 10
     resp_handler_table = {}
 
-    class ftp_res_type:
+    class ftp_res_type(Enum):
         interm = 1
         successful = 2
         more_needed = 3
@@ -73,10 +77,11 @@ class ftp_raw_resp_handler:
         buff = bytearray()
         while True:
             s = client_socket.recv(ftp_raw_resp_handler.READ_BLOCK_SIZE)
-            if (s == ''):
-                return None
+            if (s == b''):
+                raise connection_closed_error
             buff = resp.process_string(buff + s)
-            if (resp.is_complete):
+            if resp.is_complete:
+                resp.res_type = ftp_raw_resp_handler.ftp_res_type(int(resp.resp_code/100))
                 resp.print_resp()
                 return resp
         #self.client.close()
@@ -123,8 +128,7 @@ class ftp_raw_resp_handler:
         trans.server_address = '.'.join(ip_port_array[0:4])
         trans.server_port = (int(ip_port_array[4]) << 8) + int(ip_port_array[5])
         resp.trans = trans
-        print("%s:%d\n" % (trans.server_address, trans.server_port))
-        
+
     @staticmethod
     def handle_pwd(resp):
         first_line = resp.lines[0]

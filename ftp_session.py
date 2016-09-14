@@ -3,16 +3,18 @@ import os
 import time
 from ftp_raw import ftp_raw_resp_handler as ftp_raw
 
+class cmd_not_implemented_error(Exception): pass
 
 # Type of data transfer on the data channel
 class transfer_type:
-    list = 1
-    file = 2
-    
+	list = 1
+	file = 2
 
 class ftp_session:
 	READ_BLOCK_SIZE = 10
-	def __init__(self, server, port = 21):
+
+	def __init__(self, server, port=21):
+		self.text_file_extensions = set()
 		self.server = server
 		self.port = port
 		self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -28,10 +30,8 @@ class ftp_session:
 		
 	def get_resp(self):
 		resp = ftp_raw.get_resp(self.client, self.cmd)
-		
 
 	def load_text_file_extensions(self):
-		self.text_file_extensions = set()
 		print(os.getcwd())
 		try:
 			f = open('text_file_extensions')
@@ -50,11 +50,13 @@ class ftp_session:
 	def get_resp(self):
 		return ftp_raw.get_resp(self.client, self.cmd)
 
-	def get(self, path, verbose = 'True'):
-		
+	def get(self, path=None, verbose='True'):
+		if not path:
+			print("usage: get path-to-file")
+			return
 		# Get filename and file extension from path
 		slash = path.rfind('/')
-		if (slash != -1):
+		if slash != -1:
 			filename = path[slash + 1:]
 		else:
 			filename = path
@@ -75,7 +77,7 @@ class ftp_session:
 		resp = self.get_resp()
 
 		if (verbose):
-			print("Requesting file %s from the ftp server..." % filename)
+			print("Requesting file %s from the ftp server...\n" % filename)
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((resp.trans.server_address, resp.trans.server_port))
 		self.send_raw_command("RETR %s\r\n" % path)
@@ -85,9 +87,9 @@ class ftp_session:
 		curr_time = time.time()
 		while True:
 			file_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE)
-			if (file_data == b''):
+			if file_data == b'':
 				break
-			if (self.transfer_type == 'A'):
+			if self.transfer_type == 'A':
 				file_data = bytes(file_data.decode('ascii').replace('\r\n', '\n'), 'ascii')
 			f.write(file_data)
 			filesize += len(file_data)
@@ -100,8 +102,8 @@ class ftp_session:
 		
 	def ls(self, filename=''):
 		self.send_raw_command("PASV\r\n")
-		#resp = ftp_raw.get_resp(self.client)
-		#ftp_raw.handle_pasv(resp)
+		# resp = ftp_raw.get_resp(self.client)
+		# ftp_raw.handle_pasv(resp)
 		resp = self.get_resp()
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((resp.trans.server_address, resp.trans.server_port))
@@ -136,8 +138,6 @@ class ftp_session:
 			if (path[-1] != '/'):
 				path = path + '/'
 			self.cwd = path
-		
-		
 
 	def login(self, username, password = None):
 		self.get_welcome_msg()

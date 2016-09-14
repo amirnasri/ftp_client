@@ -1,4 +1,5 @@
 import ftp_session
+from ftp_raw import connection_closed_error
 import sys
 
 class cli_error(BaseException): pass
@@ -50,8 +51,13 @@ class ftp_cli:
         while True:
             self.print_prompt()
             cmd_line = input()
-            self.ftp.run_command(cmd_line)
-        
+            try:
+                self.ftp.run_command(cmd_line)
+            except ftp_session.cmd_not_implemented_error:
+                print("command not implemented")
+            except connection_closed_error:
+                print("connection was closed by the server")
+
 
 if (__name__ == '__main__'):
     cli = ftp_cli()
