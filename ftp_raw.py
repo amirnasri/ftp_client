@@ -5,6 +5,8 @@ Handle responses from the server to ftp raw commands.
 from enum import Enum
 
 class connection_closed_error(Exception): pass
+class response_error(Exception): pass
+
 class transfer(object):
     pass
 
@@ -64,7 +66,11 @@ class ftp_raw_resp_handler:
         more_needed = 3
         fail = 4
         error = 5
-    
+
+    @staticmethod
+    def resp_failed(resp):
+        return resp.res_type == ftp_raw_resp_handler.ftp_res_type.error\
+               or resp.res_type == ftp_raw_resp_handler.ftp_res_type.fail
     @staticmethod
     def init():
         if not ftp_raw_resp_handler.resp_handler_table:
@@ -83,6 +89,8 @@ class ftp_raw_resp_handler:
             if resp.is_complete:
                 resp.res_type = ftp_raw_resp_handler.ftp_res_type(int(resp.resp_code/100))
                 resp.print_resp()
+                if ftp_raw_resp_handler.resp_failed(resp):
+                    raise response_error
                 return resp
         #self.client.close()
     """        

@@ -2,6 +2,7 @@ import socket
 import os
 import time
 from ftp_raw import ftp_raw_resp_handler as ftp_raw
+from ftp_raw import response_error
 
 class cmd_not_implemented_error(Exception): pass
 
@@ -162,7 +163,10 @@ class ftp_session:
 		cmd = cmd_line[0]
 		cmd_args = cmd_line[1:]
 		if hasattr(ftp_session, cmd):
-			getattr(ftp_session, cmd)(self, *cmd_args)
+			try:
+				getattr(ftp_session, cmd)(self, *cmd_args)
+			except response_error:
+				pass
 		else:
 			raise cmd_not_implemented_error
 		
