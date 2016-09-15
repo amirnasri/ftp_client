@@ -6,6 +6,7 @@ from enum import Enum
 
 class connection_closed_error(Exception): pass
 class response_error(Exception): pass
+class raw_cmd_not_implemented_error(Exception): pass
 
 class transfer(object):
     pass
@@ -54,12 +55,10 @@ class response:
             print(l.decode('ascii'), end = '')
         print("")
         
-
-
 class ftp_raw_resp_handler:
     READ_BLOCK_SIZE = 10
     resp_handler_table = {}
-
+    #ftp_raw_resp_handler.handle_pasv
     class ftp_res_type(Enum):
         interm = 1
         successful = 2
@@ -111,9 +110,10 @@ class ftp_raw_resp_handler:
     @staticmethod
     def get_resp(client_socket, ftp_cmd = None):
         resp = ftp_raw_resp_handler.get_resp_(client_socket)
-        if ftp_cmd and (ftp_cmd in ftp_raw_resp_handler.resp_handler_table):
-            resp_handler = ftp_raw_resp_handler.resp_handler_table[ftp_cmd]
-            resp_handler(resp)
+        if ftp_cmd:
+            handler = 'handle_' + ftp_cmd.lower()
+            if hasattr(ftp_raw_resp_handler, handler):
+                getattr(ftp_raw_resp_handler, handler)(resp)
         return resp
 
     @staticmethod
@@ -148,5 +148,10 @@ class ftp_raw_resp_handler:
         if (quote == -1):
             raise pwd_resp_error
         resp.cwd = first_line[:quote].decode('ascii')
-        
+
+    @staticmethod
+    def handle_cwd(resp):
+        resp.cwd = resp.lines[0].split()[-1].decode('ascii')
+
+
 ftp_raw_resp_handler.init()

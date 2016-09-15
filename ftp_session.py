@@ -5,6 +5,7 @@ from ftp_raw import ftp_raw_resp_handler as ftp_raw
 from ftp_raw import response_error
 
 class cmd_not_implemented_error(Exception): pass
+class quit_error(Exception): pass
 
 # Type of data transfer on the data channel
 class transfer_type:
@@ -30,7 +31,7 @@ class ftp_session:
 		self.cmd = command.split()[0].strip()
 		
 	def get_resp(self):
-		resp = ftp_raw.get_resp(self.client, self.cmd)
+		return ftp_raw.get_resp(self.client, self.cmd)
 
 	def load_text_file_extensions(self):
 		print(os.getcwd())
@@ -47,9 +48,6 @@ class ftp_session:
 	@staticmethod
 	def calculate_data_rate(filesize, seconds):
 		return filesize/seconds
-
-	def get_resp(self):
-		return ftp_raw.get_resp(self.client, self.cmd)
 
 	def get(self, path=None, verbose='True'):
 		if not path:
@@ -135,10 +133,7 @@ class ftp_session:
 		else:
 			self.send_raw_command("CWD %s\r\n" % path)
 		resp = self.get_resp()
-		if path:
-			if (path[-1] != '/'):
-				path = path + '/'
-			self.cwd = path
+		self.cwd = resp.cwd
 
 	def login(self, username, password = None):
 		self.get_welcome_msg()
@@ -156,6 +151,8 @@ class ftp_session:
 		else:
 			raise login_error
 
+	def quit(self):
+		raise quit_error
 	def run_command(self, cmd_line):
 		''' run a single ftp command received from the ftp_cli module.
 		'''

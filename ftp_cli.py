@@ -31,9 +31,9 @@ class ftp_cli:
             port = int(server[colon+1:])
             server = server[colon]  
         ftp = ftp_session.ftp_session(server, port)
-        if (not username):
+        if not username:
             username = input('Username:')
-        if (not password):
+        if not password:
             password = input('Password:')
         ftp.login(username, password)
         self.ftp = ftp
@@ -50,13 +50,22 @@ class ftp_cli:
         '''
         while True:
             self.print_prompt()
-            cmd_line = input()
             try:
+                cmd_line = input()
+                if not cmd_line.strip():
+                    continue
                 self.ftp.run_command(cmd_line)
             except ftp_session.cmd_not_implemented_error:
                 print("command not implemented")
             except connection_closed_error:
-                print("connection was closed by the server")
+                print("connection was closed by the server.")
+                break
+            except ftp_session.quit_error:
+                print("Goodbye.")
+                break
+            except (EOFError, KeyboardInterrupt):
+                print("")
+                break
 
 
 if (__name__ == '__main__'):
