@@ -14,6 +14,7 @@ class ftp_cli:
 
         username = ''
         password = ''
+        server_path = ''
         port = 21
         
         arg1 = sys.argv[1]
@@ -22,20 +23,27 @@ class ftp_cli:
         if (at != -1):
             username = arg1[:at]
             server = arg1[at+1:]
-            colon = username.find(':')
-            if (colon != -1):
-                password = username[colon+1:]
-                username = username[:colon]
+        colon = username.find(':')
+        if (colon != -1):
+            password = username[colon+1:]
+            username = username[:colon]
+        # Pasrse server segment
+        slash = server.find('/')
+        if (slash != -1):
+            server_path = server[slash + 1:]
+            server = server[:slash]
         colon = server.find(':')
         if (colon != -1):
             port = int(server[colon+1:])
-            server = server[colon]  
+            server = server[:colon]
         ftp = ftp_session.ftp_session(server, port)
         if not username:
             username = input('Username:')
         if not password:
             password = input('Password:')
         ftp.login(username, password)
+        if server_path:
+            ftp.cd(server_path)
         self.ftp = ftp
         self.username = username
         self.password = password
