@@ -34,7 +34,6 @@ class ftp_session:
 		return ftp_raw.get_resp(self.client, self.cmd)
 
 	def load_text_file_extensions(self):
-		print(os.getcwd())
 		try:
 			f = open('text_file_extensions')
 			for line in f:
