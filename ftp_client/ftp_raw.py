@@ -51,7 +51,7 @@ class response:
 
 
 class ftp_raw_resp_handler:
-    READ_BLOCK_SIZE = 10
+    READ_BLOCK_SIZE = 1024
     resp_handler_table = {}
     
     class ftp_res_type:
