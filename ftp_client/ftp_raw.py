@@ -1,6 +1,13 @@
 '''
 Handle responses from the server to ftp raw commands.
 '''
+
+from enum import Enum
+
+class connection_closed_error(Exception): pass
+class response_error(Exception): pass
+class raw_cmd_not_implemented_error(Exception): pass
+
 class transfer(object):
     pass
 
@@ -15,7 +22,7 @@ class response:
         if not self.multiline:
             # Only the first line of response comes here (for both single-line and multiline responses).
             resp_code = int(newline[:3])
-            if (resp_code > 100 and resp_code < 600 and \
+            if (resp_code > 100 and resp_code < 600 and
                     (chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
                 self.resp_code = resp_code
             else:
@@ -48,35 +55,41 @@ class response:
             print(l.decode('ascii'), end = '')
         print("")
         
-
-
 class ftp_raw_resp_handler:
     READ_BLOCK_SIZE = 1024
     resp_handler_table = {}
-    
-    class ftp_res_type:
+    #ftp_raw_resp_handler.handle_pasv
+    class ftp_res_type(Enum):
         interm = 1
         successful = 2
         more_needed = 3
         fail = 4
         error = 5
-    
+
+    @staticmethod
+    def resp_failed(resp):
+        return resp.res_type == ftp_raw_resp_handler.ftp_res_type.error\
+               or resp.res_type == ftp_raw_resp_handler.ftp_res_type.fail
     @staticmethod
     def init():
         if not ftp_raw_resp_handler.resp_handler_table:
-                ftp_raw_resp_handler.resp_handler_table['PASV'] = ftp_raw_resp_handler.handle_pasv 
-    
+                ftp_raw_resp_handler.resp_handler_table['PASV'] = ftp_raw_resp_handler.handle_pasv
+                ftp_raw_resp_handler.resp_handler_table['PWD'] = ftp_raw_resp_handler.handle_pwd
+
     @staticmethod
     def get_resp_(client_socket):
         resp = response()
         buff = bytearray()
         while True:
             s = client_socket.recv(ftp_raw_resp_handler.READ_BLOCK_SIZE)
-            if (s == ''):
-                return None
+            if (s == b''):
+                raise connection_closed_error
             buff = resp.process_string(buff + s)
-            if (resp.is_complete):
+            if resp.is_complete:
+                resp.res_type = ftp_raw_resp_handler.ftp_res_type(int(resp.resp_code/100))
                 resp.print_resp()
+                if ftp_raw_resp_handler.resp_failed(resp):
+                    raise response_error
                 return resp
         #self.client.close()
     """        
@@ -95,10 +108,14 @@ class ftp_raw_resp_handler:
         return self.resp_queue.pop()
     """
     @staticmethod
-    def get_resp(client_socket, ftp_cmd):
+    def get_resp(client_socket, ftp_cmd = None):
         resp = ftp_raw_resp_handler.get_resp_(client_socket)
-        return ftp_raw_resp_handler.resp_handler(ftp_cmd, resp)
-        
+        if ftp_cmd:
+            handler = 'handle_' + ftp_cmd.lower()
+            if hasattr(ftp_raw_resp_handler, handler):
+                getattr(ftp_raw_resp_handler, handler)(resp)
+        return resp
+
     @staticmethod
     def handle_pasv(resp):
         if (len(resp.lines) != 1):
@@ -119,8 +136,7 @@ class ftp_raw_resp_handler:
         trans.server_address = '.'.join(ip_port_array[0:4])
         trans.server_port = (int(ip_port_array[4]) << 8) + int(ip_port_array[5])
         resp.trans = trans
-        print("%s:%d\n" % (trans.server_address, trans.server_port))
-        
+
     @staticmethod
     def handle_pwd(resp):
         first_line = resp.lines[0]
@@ -132,4 +148,10 @@ class ftp_raw_resp_handler:
         if (quote == -1):
             raise pwd_resp_error
         resp.cwd = first_line[:quote].decode('ascii')
-        
+
+    @staticmethod
+    def handle_cwd(resp):
+        resp.cwd = resp.lines[0].split()[-1].decode('ascii')
+
+
+ftp_raw_resp_handler.init()
