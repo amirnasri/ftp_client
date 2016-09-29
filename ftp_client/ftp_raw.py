@@ -4,117 +4,21 @@ Handle responses from the server to ftp raw commands.
 
 from enum import Enum
 
-class connection_closed_error(Exception): pass
-class response_error(Exception): pass
 class raw_cmd_not_implemented_error(Exception): pass
 
 class transfer(object):
     pass
 
-class response:
-    def __init__(self):
-        self.is_complete = False
-        self.lines = []
-        self.multiline = False
-        self.resp_code = 0
-        
-    def process_newline(self, newline):
-        if not self.multiline:
-            # Only the first line of response comes here (for both single-line and multiline responses).
-            resp_code = int(newline[:3])
-            if (resp_code > 100 and resp_code < 600 and
-                    (chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
-                self.resp_code = resp_code
-            else:
-                raise resp_parse_error
-            
-            if (chr(newline[3]) == '-'):
-                self.multiline = True
-            else:
-                self.is_complete = True
-        else:
-            if (int(newline[:3]) == self.resp_code and chr(newline[3]) == ' '):
-                self.is_complete = True
-        
-    def process_string(self, s):
-        ''' Parse a string received from the server into lines
-        and then process each line. ''' 
-        while True:
-            # TODO: change '\r\n' to '\r*\n'
-            rn_pos = s.find(b'\r\n')
-            if (rn_pos == -1):
-                break
-            newline = s[:rn_pos + 2]
-            s = s[rn_pos + 2:]
-            self.process_newline(newline)
-            self.lines.append(newline)
-        return s
-
-    def print_resp(self):
-        for l in self.lines:
-            print(l.decode('ascii'), end = '')
-        print("")
-        
 class ftp_raw_resp_handler:
     READ_BLOCK_SIZE = 1024
-    resp_handler_table = {}
-    #ftp_raw_resp_handler.handle_pasv
-    class ftp_res_type(Enum):
-        interm = 1
-        successful = 2
-        more_needed = 3
-        fail = 4
-        error = 5
 
     @staticmethod
-    def resp_failed(resp):
-        return resp.res_type == ftp_raw_resp_handler.ftp_res_type.error\
-               or resp.res_type == ftp_raw_resp_handler.ftp_res_type.fail
-    @staticmethod
-    def init():
-        if not ftp_raw_resp_handler.resp_handler_table:
-                ftp_raw_resp_handler.resp_handler_table['PASV'] = ftp_raw_resp_handler.handle_pasv
-                ftp_raw_resp_handler.resp_handler_table['PWD'] = ftp_raw_resp_handler.handle_pwd
-
-    @staticmethod
-    def get_resp_(client_socket):
-        resp = response()
-        buff = bytearray()
-        while True:
-            s = client_socket.recv(ftp_raw_resp_handler.READ_BLOCK_SIZE)
-            if (s == b''):
-                raise connection_closed_error
-            buff = resp.process_string(buff + s)
-            if resp.is_complete:
-                resp.res_type = ftp_raw_resp_handler.ftp_res_type(int(resp.resp_code/100))
-                resp.print_resp()
-                if ftp_raw_resp_handler.resp_failed(resp):
-                    raise response_error
-                return resp
-        #self.client.close()
-    """        
-    def get_resp(self):
-        if (len(self.resp_queue) == 0):
-            while True:
-                resp = self.get_resp_()
-                ''' If response is not complete we stop processing the responses untile the 
-                next time get_resp is called. '''
-                if resp is None:
-                    break
-                ''' Insert the new response at the begining of the (empty) queue. '''
-                self.resp_queue.insert(0, resp)
-                
-        ''' Pop the last response in the queue and return it. '''
-        return self.resp_queue.pop()
-    """
-    @staticmethod
-    def get_resp(client_socket, ftp_cmd = None):
-        resp = ftp_raw_resp_handler.get_resp_(client_socket)
+    def get_resp_handler(ftp_cmd = None):
         if ftp_cmd:
             handler = 'handle_' + ftp_cmd.lower()
             if hasattr(ftp_raw_resp_handler, handler):
-                getattr(ftp_raw_resp_handler, handler)(resp)
-        return resp
+                return getattr(ftp_raw_resp_handler, handler)
+        return None
 
     @staticmethod
     def handle_pasv(resp):
@@ -152,6 +56,3 @@ class ftp_raw_resp_handler:
     @staticmethod
     def handle_cwd(resp):
         resp.cwd = resp.lines[0].split()[-1].decode('ascii')
-
-
-ftp_raw_resp_handler.init()

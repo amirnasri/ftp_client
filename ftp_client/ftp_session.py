@@ -2,10 +2,12 @@ import socket
 import os
 import time
 from ftp_raw import ftp_raw_resp_handler as ftp_raw
-from ftp_raw import response_error
+from ftp_parser import response_error
+from ftp_parser import ftp_client_parser
 
 class cmd_not_implemented_error(Exception): pass
 class quit_error(Exception): pass
+class connection_closed_error(Exception): pass
 
 # Type of data transfer on the data channel
 class transfer_type:
@@ -24,6 +26,7 @@ class ftp_session:
 		self.load_text_file_extensions()
 		self.cwd = ''
 		self.cmd = None
+		self.parser = ftp_client_parser()
 
 	def send_raw_command(self, command):
 		print(command.strip())
@@ -31,7 +34,17 @@ class ftp_session:
 		self.cmd = command.split()[0].strip()
 		
 	def get_resp(self):
-		return ftp_raw.get_resp(self.client, self.cmd)
+		while True:
+			s = self.client.recv(ftp_session.READ_BLOCK_SIZE)
+			if (s == b''):
+				raise connection_closed_error
+			resp = self.parser.get_resp(s)
+			if resp:
+				break
+		resp_handler = ftp_raw.get_resp_handler(self.cmd)
+		if resp_handler:
+			resp_handler(resp)
+		return resp
 
 	def load_text_file_extensions(self):
 		try:
@@ -100,13 +113,10 @@ class ftp_session:
 		
 	def ls(self, filename=''):
 		self.send_raw_command("PASV\r\n")
-		# resp = ftp_raw.get_resp(self.client)
-		# ftp_raw.handle_pasv(resp)
 		resp = self.get_resp()
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((resp.trans.server_address, resp.trans.server_port))
 		self.send_raw_command("LIST %s\r\n" % filename)
-		#ftp_raw.get_resp(self.client)
 		self.get_resp()
 		while True:
 			ls_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')

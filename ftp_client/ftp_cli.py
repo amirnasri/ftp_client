@@ -1,5 +1,5 @@
 import ftp_session
-from ftp_raw import connection_closed_error
+from ftp_session import connection_closed_error
 import sys
 
 class cli_error(BaseException): pass

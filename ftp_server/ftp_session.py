@@ -1,18 +1,34 @@
+import sys
 import socket
+from ftp_parser import ftp_server_parser
 
 class client:
-    def __init__(self, client_socket):
-        self.socket = client_socket
+    def __init__(self, socket):
+        self.socket = socket[0]
+        self.client_addr = socket[1]
         self.send_welcome_msg()
+        self.parser = ftp_server_parser()
+        print("received coonnection from (%s, %s)" % self.client_addr)
         self.proc_client()
-    
+
     def send_welcome_msg(self):
-        self.socket.send("220 welcome to amir ftp server/r/n")
-    
+        self.socket.send(b"220 welcome to amir ftp server\r\n")
+
+    def get_request(self):
+        while True:
+            s = self.socket.recv(ftp_session.READ_BLOCK_SIZE)
+            if (s == b''):
+                raise connection_closed_error
+            req = self.parser.get_request(s)
+            if req:
+                break
+        #resp_handler = ftp_raw.get_resp_handler(self.cmd)
+        #if resp_handler:
+        #    resp_handler(resp)
+        return req
+
     def proc_client(self):
-        
-    
-            
+        req = self.get_request()
 
 class ftp_session:
     FTP_SERVER_PORT = 8001
@@ -20,19 +36,18 @@ class ftp_session:
     
     def __init__(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.bind(("localhost", ftp_session.FTP_SERVER_PORT))
+        port = ftp_session.FTP_SERVER_PORT
+        if len(sys.argv) > 1:
+            port = int(sys.argv[1])
+        server.bind(("localhost", port))
         server.listen(5)
         self.server = server
-        client_socket = server.accept()
-        self.serv_client(client_socket)
+        while True:
+            client_socket = server.accept()
+            client(client_socket)
+
+
         
-        
-    def serv_client(self, client_socket):
-        client_socket.send
-        s = client_socket.recv(ftp_session.READ_BLOCK_SIZE)
-        if (s == ''):
-            raise connection_closed_error
-        
-        
-        
+if __name__ == '__main__':
+    session = ftp_session()
         
