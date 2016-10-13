@@ -26,6 +26,8 @@ class ftp_session:
 		self.load_text_file_extensions()
 		self.cwd = ''
 		self.cmd = None
+		self.verbose = True
+		self.transfer_type = None
 		self.parser = ftp_client_parser()
 
 	def send_raw_command(self, command):
@@ -61,10 +63,20 @@ class ftp_session:
 	def calculate_data_rate(filesize, seconds):
 		return filesize/seconds
 
-	def get(self, path=None, verbose='True'):
-		if not path:
+	def ascii(self):
+		self.transfer_type = 'A'
+		print("Switched to ascii mode")
+
+	def binary(self):
+		self.transfer_type = 'I'
+		print("Switched to binary mode")
+
+	def get(self, *args):
+		print(args)
+		if len(args) == 0:
 			print("usage: get path-to-file")
 			return
+		path = args[0]
 		# Get filename and file extension from path
 		slash = path.rfind('/')
 		if slash != -1:
@@ -73,21 +85,22 @@ class ftp_session:
 			filename = path
 		file_ext = filename[filename.rfind('.'):]
 
-		# Send TYPE depending on the type of the file 
-		# (TYPE A for ascii files and TYPE I for binary files) 
-		if file_ext in self.text_file_extensions:
-			self.transfer_type = 'A'
-			self.send_raw_command("TYPE A\r\n")
-		else:
-			self.transfer_type = 'I'
-			self.send_raw_command("TYPE I\r\n")
+		# If transfer type is not set, send TYPE command depending on the type of the file
+		# (TYPE A for ascii files and TYPE I for binary files)
+		transfer_type = self.transfer_type
+		if transfer_type is None:
+			if file_ext in self.text_file_extensions:
+				transfer_type = 'A'
+			else:
+				transfer_type = 'I'
+		self.send_raw_command("TYPE %s\r\n" % transfer_type)
 		self.get_resp()
 
 		# Send PASV command to prepare for data transfer
 		self.send_raw_command("PASV\r\n")
 		resp = self.get_resp()
 
-		if (verbose):
+		if (self.verbose):
 			print("Requesting file %s from the ftp server...\n" % filename)
 		data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		data_socket.connect((resp.trans.server_address, resp.trans.server_port))
@@ -107,7 +120,7 @@ class ftp_session:
 		elapsed_time = time.time()- curr_time
 		self.get_resp()
 		f.close()
-		if (verbose):
+		if (self.verbose):
 			print("%d bytes received in %f seconds (%.2f b/s)."  
 				%(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
 		

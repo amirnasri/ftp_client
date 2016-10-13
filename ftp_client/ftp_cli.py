@@ -74,9 +74,9 @@ class ftp_cli:
             except (EOFError, KeyboardInterrupt):
                 print("")
                 break
-            except BaseException:
-                print("")
-                break
+            #except BaseException:
+            #    print("")
+            #    break
 
 
 if (__name__ == '__main__'):
