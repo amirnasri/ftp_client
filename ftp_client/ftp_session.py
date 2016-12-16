@@ -8,6 +8,7 @@ from ftp_parser import ftp_client_parser
 class cmd_not_implemented_error(Exception): pass
 class quit_error(Exception): pass
 class connection_closed_error(Exception): pass
+import os
 
 # Type of data transfer on the data channel
 class transfer_type:
@@ -27,7 +28,7 @@ class ftp_session:
 		self.cwd = ''
 		self.cmd = None
 		self.parser = ftp_client_parser()
-
+		
 	def send_raw_command(self, command):
 		print(command.strip())
 		self.client.send(bytes(command, 'ascii'))
@@ -139,11 +140,15 @@ class ftp_session:
 	def cd(self, path=None):
 		if not path:
 			self.send_raw_command("PWD\r\n")
+			self.get_resp()
 		else:
 			self.send_raw_command("CWD %s\r\n" % path)
-		resp = self.get_resp()
-		self.cwd = resp.cwd
+			self.get_resp()
+			self.send_raw_command("PWD\r\n")
+			resp = self.get_resp()
+			self.cwd = resp.cwd
 
+	
 	def login(self, username, password = None):
 		self.get_welcome_msg()
 		self.send_raw_command("USER %s\r\n" % username)

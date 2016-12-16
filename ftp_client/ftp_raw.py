@@ -55,4 +55,5 @@ class ftp_raw_resp_handler:
 
     @staticmethod
     def handle_cwd(resp):
-        resp.cwd = resp.lines[0].split()[-1].decode('ascii')
+        #resp.cwd = resp.lines[0].split()[-1].decode('ascii')
+        pass

@@ -2,6 +2,12 @@ import sys
 import socket
 from ftp_parser import ftp_server_parser
 
+class ftp_raw_cmd_handler:
+    @staticmethod
+    def user(req):
+        
+        
+
 class client:
     def __init__(self, socket):
         self.socket = socket[0]
@@ -30,18 +36,19 @@ class client:
     def proc_client(self):
         req = self.get_request()
 
-class ftp_session:
+class ftp_server:
     FTP_SERVER_PORT = 8001
     READ_BLOCK_SIZE = 1024
     
     def __init__(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        port = ftp_session.FTP_SERVER_PORT
+        port = ftp_server.FTP_SERVER_PORT
         if len(sys.argv) > 1:
             port = int(sys.argv[1])
         server.bind(("localhost", port))
         server.listen(5)
         self.server = server
+        print('ftp server listening on port %d' % ftp_server.FTP_SERVER_PORT)
         while True:
             client_socket = server.accept()
             client(client_socket)
@@ -49,5 +56,5 @@ class ftp_session:
 
         
 if __name__ == '__main__':
-    session = ftp_session()
+    session = ftp_server()
         

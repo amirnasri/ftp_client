@@ -82,8 +82,8 @@ class ftp_client_parser:
         if resp.is_complete:
             resp.type = ftp_resp_type(int(resp.resp_code / 100))
             resp.print_resp()
+            self.resp = None
             if ftp_client_parser.resp_failed(resp):
                 raise response_error
-            self.resp = None
             return resp
         return None
