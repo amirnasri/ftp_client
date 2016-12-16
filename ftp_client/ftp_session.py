@@ -16,7 +16,7 @@ class transfer_type:
 	file = 2
 
 class ftp_session:
-	READ_BLOCK_SIZE = 10
+	READ_BLOCK_SIZE = 1024
 
 	def __init__(self, server, port=21):
 		self.text_file_extensions = set()
@@ -39,9 +39,11 @@ class ftp_session:
 	def get_resp(self):
 		while True:
 			s = self.client.recv(ftp_session.READ_BLOCK_SIZE)
+			print("string received from server: %s" % s)
 			if (s == b''):
 				raise connection_closed_error
 			resp = self.parser.get_resp(s)
+			print(resp)
 			if resp:
 				break
 		resp_handler = ftp_raw.get_resp_handler(self.cmd)
