@@ -74,14 +74,15 @@ class ftp_client_parser:
         return resp.type == ftp_resp_type.error\
                or resp.type == ftp_resp_type.fail
 
-    def get_resp(self, str):
+    def get_resp(self, str, verbose):
         if not self.resp:
             self.resp = response()
         resp = self.resp
         self.buff = resp.process_string(self.buff + str)
         if resp.is_complete:
             resp.type = ftp_resp_type(int(resp.resp_code / 100))
-            resp.print_resp()
+            if verbose:
+                resp.print_resp()
             self.resp = None
             if ftp_client_parser.resp_failed(resp):
                 raise response_error

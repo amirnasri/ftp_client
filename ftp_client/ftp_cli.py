@@ -1,6 +1,7 @@
 import ftp_session
 from ftp_session import connection_closed_error
 import sys
+import getpass
 
 class cli_error(BaseException): pass
 
@@ -40,7 +41,7 @@ class ftp_cli:
         if not username:
             username = input('Username:')
         if not password:
-            password = input('Password:')
+            password = getpass.getpass(prompt='Password:')
         ftp.login(username, password)
         if server_path:
             ftp.cd(server_path)
