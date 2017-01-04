@@ -5,6 +5,7 @@ from ftp_raw import ftp_raw_resp_handler as ftp_raw
 from ftp_parser import response_error
 from ftp_parser import ftp_client_parser
 import inspect
+import subprocess
 
 class cmd_not_implemented_error(Exception): pass
 class quit_error(Exception): pass
@@ -19,6 +20,9 @@ TODO:
 - Add installation using python setup.py
 - Add !command for executing shell commands
 '''
+def ftp_command(f):
+	f.ftp_command = True
+	return f
 
 
 def check_args(f):
@@ -60,13 +64,13 @@ class ftp_session:
 		self.verbose = True
 		self.transfer_type = None
 		self.parser = ftp_client_parser()
-		
+
 	def send_raw_command(self, command):
 		if self.verbose:
 			print(command.strip())
 		self.client.send(bytes(command, 'ascii'))
 		self.cmd = command.split()[0].strip()
-		
+
 	def get_resp(self):
 		while True:
 			s = self.client.recv(ftp_session.READ_BLOCK_SIZE)
@@ -108,6 +112,7 @@ class ftp_session:
 					p = line.find('usage:')
 					if p != -1:
 						print(line[p:])
+	@ftp_command
 	def ascii(self, args):
 		if len(args) != 0:
 			ftp_session.print_usage()
@@ -115,6 +120,7 @@ class ftp_session:
 		self.transfer_type = 'A'
 		print("Switched to ascii mode")
 
+	@ftp_command
 	def binary(self, args):
 		if len(args) != 0:
 			ftp_session.print_usage()
@@ -122,10 +128,11 @@ class ftp_session:
 		self.transfer_type = 'I'
 		print("Switched to binary mode")
 
-	def get(self, *args):
-		print(args)
-		if len(args) == 0:
-			print("usage: get path-to-file")
+	@ftp_command
+	def get(self, args):
+		'''	usage: get path-to-file '''
+		if len(args) != 1:
+			ftp_session.print_usage()
 			return
 		path = args[0]
 		# Get filename and file extension from path
@@ -134,13 +141,16 @@ class ftp_session:
 			filename = path[slash + 1:]
 		else:
 			filename = path
-		file_ext = filename[filename.rfind('.'):]
+		dot = filename.rfind('.')
+		file_ext = ''
+		if dot != -1:
+			file_ext = filename[filename.rfind('.'):]
 
 		# If transfer type is not set, send TYPE command depending on the type of the file
 		# (TYPE A for ascii files and TYPE I for binary files)
 		transfer_type = self.transfer_type
 		if transfer_type is None:
-			if file_ext in self.text_file_extensions:
+			if file_ext != '' and file_ext in self.text_file_extensions:
 				transfer_type = 'A'
 			else:
 				transfer_type = 'I'
@@ -172,13 +182,12 @@ class ftp_session:
 		self.get_resp()
 		f.close()
 		if self.verbose:
-			print("%d bytes received in %f seconds (%.2f b/s)."  
+			print("%d bytes received in %f seconds (%.2f b/s)."
 				%(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
-		
+
+	'''	usage: ls [dirname] '''
+	@ftp_command
 	def ls(self, args):
-		'''
-			usage: ls [dirname]
-		'''
 
 		if len(args) > 1:
 			ftp_session.print_usage()
@@ -202,7 +211,8 @@ class ftp_session:
 			print()
 		self.get_resp()
 
-	def pwd(self):		
+	@ftp_command
+	def pwd(self):
 		self.send_raw_command("PWD\r\n")
 		resp = self.get_resp()
 		self.cwd = resp.cwd
@@ -212,6 +222,7 @@ class ftp_session:
 			self.pwd()
 		return self.cwd
 
+	@ftp_command
 	def cd(self, args):
 		'''
 			usage: cd [dirname]
@@ -233,6 +244,7 @@ class ftp_session:
 			resp = self.get_resp()
 			self.cwd = resp.cwd
 
+	@ftp_command
 	def verbose(self, args):
 		'''
 			usage: verbose [on|off]
@@ -252,6 +264,7 @@ class ftp_session:
 				return
 		print("verbose %s" % ('on' if self.verbose else 'off'))
 
+	@ftp_command
 	def mkdir(self, dirname):
 		self.send_raw_command("MKD %s\r\n" % dirname)
 		self.get_resp()
@@ -272,11 +285,15 @@ class ftp_session:
 		else:
 			raise login_error
 
+	@ftp_command
 	def quit(self):
 		raise quit_error
 	def run_command(self, cmd_line):
 		''' run a single ftp command received from the ftp_cli module.
 		'''
+		if cmd_line[0] == '!':
+			subprocess.run(cmd_line[1:].split(), shell=False)
+			return
 		cmd_line = cmd_line.split()
 		cmd = cmd_line[0]
 		cmd_args = cmd_line[1:]
@@ -287,7 +304,7 @@ class ftp_session:
 				pass
 		else:
 			raise cmd_not_implemented_error
-		
+
 	def session_close(self):
 		self.client.close()
 
