@@ -7,13 +7,8 @@ class cli_error(BaseException): pass
 
 
 import readline
-import logging
 import types
 
-LOG_FILENAME = '/tmp/completer.log'
-logging.basicConfig(filename=LOG_FILENAME,
-                    level=logging.DEBUG,
-                    )
 
 def get_ftp_commands():
     l = []
@@ -35,10 +30,8 @@ class Completer(object):
                 self.matches = [s
                                 for s in self.options
                                 if s and s.startswith(text)]
-                logging.debug('%s matches: %s', repr(text), self.matches)
             else:
                 self.matches = self.options[:]
-                logging.debug('(empty input) matches: %s', self.matches)
 
         # Return the state'th item from the match list,
         # if we have that many.
@@ -46,8 +39,6 @@ class Completer(object):
             response = self.matches[state]
         except IndexError:
             response = None
-        logging.debug('complete(%s, %s) => %s',
-                      repr(text), state, repr(response))
         return response
 
 class ftp_cli:
@@ -91,7 +82,7 @@ class ftp_cli:
             password = 'password'
         ftp.login(username, password)
         if server_path:
-            ftp.cd(server_path)
+            ftp.cd([server_path])
         self.ftp = ftp
         self.username = username
         self.password = password
