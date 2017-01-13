@@ -1,11 +1,12 @@
 import socket
 import os
 import time
-from ftp_raw import ftp_raw_resp_handler as ftp_raw
+from ftp_raw import FtpRawRespHandler as FtpRaw
 from ftp_parser import response_error
 from ftp_parser import ftp_client_parser
 import inspect
 import subprocess
+import re
 
 class ftp_error(Exception): pass
 class cmd_not_implemented_error(ftp_error): pass
@@ -50,7 +51,7 @@ class transfer_type:
 	list = 1
 	file = 2
 
-class bcolors:
+class LsColors:
 	HEADER = '\033[95m'
 	OKBLUE = '\033[94m'
 	OKGREEN = '\033[92m'
@@ -59,6 +60,18 @@ class bcolors:
 	ENDC = '\033[0m'
 	BOLD = '\033[1m'
 	UNDERLINE = '\033[4m'
+
+	regex = re.compile(r'\*\.(.+)=(.+)')
+	output = subprocess.check_output(['echo $LS_COLORS'], shell=True)
+	d = {}
+	if output:
+		output = str(output).split(':')
+		for i in output:
+			m = regex.match(i)
+			if m:
+				d[m.group(1)] = ('\033[%sm' % m.group(2))
+
+
 
 class ftp_session:
 	READ_BLOCK_SIZE = 1024
@@ -89,13 +102,19 @@ class ftp_session:
 			#print("string received from server: %s" % s)
 			if (s == b''):
 				raise connection_closed_error
-			resp = self.parser.get_resp(s, self.verbose)
+			try:
+				resp = self.parser.get_resp(s, self.verbose)
+			except response_error:
+				self.cmd = None
+				return None
 			#print(resp)
 			if resp:
 				break
-		resp_handler = ftp_raw.get_resp_handler(self.cmd)
-		if resp_handler:
+
+		resp_handler = FtpRaw.get_resp_handler(self.cmd)
+		if resp_handler is not None:
 			resp_handler(resp)
+
 		return resp
 
 	def load_text_file_extensions(self):
@@ -276,16 +295,35 @@ class ftp_session:
 			print("%d bytes sent in %f seconds (%.2f b/s)."
 				%(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
 
-	def get_colored_ls_data(ls_data):
+	def get_colored_ls_data(self, ls_data):
 		lines = ls_data.split('\r\n')
 		colored_lines = []
 		import re
+		#regex = re.compile()
+
 		for l in lines:
 			#re.sub(r'(d.*\s+(\w+\s+){7})(\w+)')
-			if l and l[0] == 'd':
+			if l:
 				p = l.rfind(' ')
-				if p != -1:
-					l = l[:p + 1] + bcolors.BOLD + bcolors.OKBLUE + l[p + 1:] + bcolors.ENDC
+				if p == -1:
+					continue
+				fname = l[p + 1:].strip()
+				if fname == '':
+					continue
+				color_prefix = ''
+				color_postfix = ''
+				if l[0] == 'd':
+					color_prefix = LsColors.BOLD + LsColors.OKBLUE
+					color_postfix = LsColors.ENDC
+				elif LsColors.d:
+					dot = fname.rfind('.')
+					if dot != -1:
+						ext = fname[dot + 1:]
+						if ext in LsColors.d:
+							color_prefix = LsColors.d[ext]
+							color_postfix = LsColors.ENDC
+				l = l[:p + 1] + color_prefix + l[p + 1:] + color_postfix
+
 			colored_lines.append(l)
 
 		return "\r\n".join(colored_lines)
@@ -318,7 +356,7 @@ class ftp_session:
 			if ls_data_ == '':
 				break
 			ls_data += ls_data_
-		ls_data_colored = ftp_session.get_colored_ls_data(ls_data)
+		ls_data_colored = self.get_colored_ls_data(ls_data)
 		print(ls_data_colored, end='')
 		data_socket.close()
 		if self.verbose:
@@ -434,7 +472,7 @@ class ftp_session:
 		if hasattr(ftp_session, cmd):
 			try:
 				getattr(ftp_session, cmd)(self, cmd_args)
-			except response_error:
+			except RespError:
 				pass
 		else:
 			raise cmd_not_implemented_error

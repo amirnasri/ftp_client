@@ -4,9 +4,7 @@ Handle responses from the server to ftp raw commands.
 
 from enum import Enum
 
-class connection_closed_error(Exception): pass
 class response_error(Exception): pass
-class raw_cmd_not_implemented_error(Exception): pass
 
 class transfer(object):
     pass
@@ -27,7 +25,7 @@ class response:
                     (chr(newline[3]) == ' ' or chr(newline[3]) == '-')):
                 self.resp_code = resp_code
             else:
-                raise resp_parse_error
+                raise response_error
             
             if (chr(newline[3]) == '-'):
                 self.multiline = True
@@ -84,7 +82,5 @@ class ftp_client_parser:
             if verbose:
                 resp.print_resp()
             self.resp = None
-            if ftp_client_parser.resp_failed(resp):
-                raise response_error
             return resp
         return None
