@@ -2,16 +2,20 @@ import socket
 import os
 import time
 from ftp_raw import FtpRawRespHandler as FtpRaw
-from ftp_parser import response_error
+from ftp_parser import response_parse_error
 from ftp_parser import ftp_client_parser
 import inspect
 import subprocess
 import re
+import sys
+import getpass
 
 class ftp_error(Exception): pass
 class cmd_not_implemented_error(ftp_error): pass
 class quit_error(ftp_error): pass
 class connection_closed_error(ftp_error): pass
+class login_error(ftp_error): pass
+class response_error(Exception): pass
 
 '''
 TODO:
@@ -80,8 +84,6 @@ class ftp_session:
 		self.text_file_extensions = set()
 		self.server = server
 		self.port = port
-		self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.client.connect((server, port))
 		self.load_text_file_extensions()
 		self.cwd = ''
 		self.cmd = None
@@ -89,12 +91,10 @@ class ftp_session:
 		self.parser = ftp_client_parser()
 		self.passive = False
 		self.verbose = True
-
-	def send_raw_command(self, command):
-		if self.verbose:
-			print(command.strip())
-		self.client.send(bytes(command, 'ascii'))
-		self.cmd = command.split()[0].strip()
+		self.connected = False
+		self.logged_in = False
+		self.data_socket = None
+		self.client = None
 
 	def get_resp(self):
 		while True:
@@ -104,11 +104,13 @@ class ftp_session:
 				raise connection_closed_error
 			try:
 				resp = self.parser.get_resp(s, self.verbose)
-			except response_error:
+			except response_parse_error:
+				print('Error occured while parsing response to ftp command %s\n' % self.cmd, file=sys.stdout)
 				self.cmd = None
 				return None
-			#print(resp)
 			if resp:
+				if self.parser.resp_failed(resp):
+					raise response_error
 				break
 
 		resp_handler = FtpRaw.get_resp_handler(self.cmd)
@@ -116,6 +118,13 @@ class ftp_session:
 			resp_handler(resp)
 
 		return resp
+
+	def send_raw_command(self, command):
+		if self.verbose:
+			print(command.strip())
+		self.client.send(bytes(command, 'ascii'))
+		self.cmd = command.split()[0].strip()
+
 
 	def load_text_file_extensions(self):
 		try:
@@ -231,13 +240,13 @@ class ftp_session:
 		if self.verbose:
 			print("Requesting file %s from the ftp server...\n" % filename)
 
-		data_socket = self.setup_data_transfer("RETR %s\r\n" % path)
+		self.data_socket = self.setup_data_transfer("RETR %s\r\n" % path)
 
 		f = open(filename, "wb")
 		filesize = 0
 		curr_time = time.time()
 		while True:
-			file_data = data_socket.recv(ftp_session.READ_BLOCK_SIZE)
+			file_data = self.data_socket.recv(ftp_session.READ_BLOCK_SIZE)
 			if file_data == b'':
 				break
 			if self.transfer_type == 'A':
@@ -247,7 +256,7 @@ class ftp_session:
 		elapsed_time = time.time()- curr_time
 		self.get_resp()
 		f.close()
-		data_socket.close()
+		self.data_socket.close()
 		if self.verbose:
 			print("%d bytes received in %f seconds (%.2f b/s)."
 				%(filesize, elapsed_time, ftp_session.calculate_data_rate(filesize, elapsed_time)))
@@ -274,7 +283,7 @@ class ftp_session:
 		if self.verbose:
 			print("Sending file %s to the ftp server...\n" % filename)
 
-		data_socket = self.setup_data_transfer("STOR %s\r\n" % path)
+		self.data_socket = self.setup_data_transfer("STOR %s\r\n" % path)
 
 		f = open(filename, "rb")
 		filesize = 0
@@ -285,10 +294,10 @@ class ftp_session:
 				break
 			if self.transfer_type == 'A':
 				file_data = bytes(file_data.decode('ascii').replace('\r\n', '\n'), 'ascii')
-			data_socket.send(file_data)
+			self.data_socket.send(file_data)
 			filesize += len(file_data)
 		elapsed_time = time.time()- curr_time
-		data_socket.close()
+		self.data_socket.close()
 		f.close()
 		self.get_resp()
 		if self.verbose:
@@ -346,19 +355,19 @@ class ftp_session:
 		data_socket.connect((resp.trans.server_address, resp.trans.server_port))
 		'''
 		data_command = "LIST %s\r\n" % filename
-		data_socket = self.setup_data_transfer(data_command)
-		if not data_socket:
+		self.data_socket = self.setup_data_transfer(data_command)
+		if not self.data_socket:
 			return
 
 		ls_data = ''
 		while True:
-			ls_data_ = data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
+			ls_data_ = self.data_socket.recv(ftp_session.READ_BLOCK_SIZE).decode('ascii')
 			if ls_data_ == '':
 				break
 			ls_data += ls_data_
 		ls_data_colored = self.get_colored_ls_data(ls_data)
 		print(ls_data_colored, end='')
-		data_socket.close()
+		self.data_socket.close()
 		if self.verbose:
 			print()
 		self.get_resp()
@@ -441,25 +450,80 @@ class ftp_session:
 		self.send_raw_command("MKD %s\r\n" % dirname)
 		self.get_resp()
 
-	def login(self, username, password = None):
-		self.get_welcome_msg()
-		self.send_raw_command("USER %s\r\n" % username)
-		resp = self.get_resp()
-		if (resp.resp_code == 331):
-			if not (password):
-				raise login_error
-			self.send_raw_command("PASS %s\r\n" % password)
-			resp = self.get_resp()
-			if (resp.resp_code != 230):
-				raise login_error
-		elif (resp.resp_code == 230):
+	@ftp_command
+	def user(self, args):
+		'''
+			usage: user username
+		'''
+		if len(args) != 1:
+			ftp_session.print_usage()
 			return
-		else:
+
+		username = args[0]
+		if not self.connected:
+			self.connect(self.server, self.port)
+		self.send_raw_command("USER %s\r\n" % username)
+		try:
+			resp = self.get_resp()
+		except response_error:
 			raise login_error
 
+		if (resp.resp_code == 331):
+			password = None
+			if username == 'anonymous':
+				password = 'guest'
+			if password is None:
+				password = getpass.getpass(prompt='Password:')
+			if password is None:
+				raise login_error
+			self.send_raw_command("PASS %s\r\n" % password)
+			try:
+				resp = self.get_resp()
+			except response_error:
+				raise login_error
+		elif (resp.resp_code == 230):
+			pass
+		else:
+			raise login_error
+		self.username = username
+		self.logged_in = True
+
+	def login(self, username, password, server_path):
+		while not username:
+			username = input('Username:')
+		if username == 'anonymous':
+			password = 'guest'
+		if password is None:
+			password = getpass.getpass(prompt='Password:')
+		self.connect(self.server, self.port)
+		self.get_welcome_msg()
+		self.send_raw_command("USER %s\r\n" % username)
+		try:
+			resp = self.get_resp()
+		except response_error:
+			raise login_error
+
+		if (resp.resp_code == 331):
+			if password is None:
+				raise login_error
+			self.send_raw_command("PASS %s\r\n" % password)
+			try:
+				resp = self.get_resp()
+			except response_error:
+				raise login_error
+		elif (resp.resp_code == 230):
+			pass
+		else:
+			raise login_error
+		if server_path:
+			self.cd([server_path])
+		self.username = username
+		self.logged_in = True
+
 	@ftp_command
-	def quit(self):
+	def quit(self, args):
 		raise quit_error
+
 	def run_command(self, cmd_line):
 		''' run a single ftp command received from the ftp_cli module.
 		'''
@@ -469,16 +533,31 @@ class ftp_session:
 		cmd_line = cmd_line.split()
 		cmd = cmd_line[0]
 		cmd_args = cmd_line[1:]
+
 		if hasattr(ftp_session, cmd):
-			try:
-				getattr(ftp_session, cmd)(self, cmd_args)
-			except RespError:
-				pass
+			if not self.logged_in and (cmd != 'user' and cmd != 'quit'):
+				print("Not logged in. Please login first with USER and PASS.")
+				return
+			getattr(ftp_session, cmd)(self, cmd_args)
 		else:
 			raise cmd_not_implemented_error
 
-	def session_close(self):
-		self.client.close()
+	def connect(self, server, port):
+		try:
+			self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			self.client.connect((server, port))
+		except socket.error:
+			print("Could not connect to the server.")
+		else:
+			self.connected = True
+
+	def disconnect(self):
+		if self.connected:
+			self.client.close()
+			if self.data_socket:
+				self.data_socket.close()
+			self.connected = False
+
 
 if __name__ == '__main__':
 	ftp = ftp_session("172.18.2.169", 21)
